@@ -460,50 +460,50 @@ a { color: inherit; text-decoration: none; }
   }
 }
 
-/* ── Mobile action bar (End Shift + Logout) ───────────────────────────────── */
-.mobile-action-bar {
-  display: none; /* hidden on desktop */
+/* ── Header 3-dot menu ──────────────────────────────────────────────────────── */
+.header-menu {
+  position: relative;
 }
-
-@media (max-width: 767px) {
-  /* Show bar fixed at bottom of screen */
-  .mobile-action-bar {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 200;
-    background: var(--green);
-    border-top: 1px solid rgba(255,255,255,.18);
-    padding: 8px 16px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-    gap: 10px;
-  }
-  .mobile-action-bar__btn {
-    flex: 1;
-    padding: 11px 8px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,.28);
-    background: rgba(255,255,255,.1);
-    color: #fff;
-    font-size: .875rem;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background .15s;
-  }
-  .mobile-action-bar__btn:active { background: rgba(255,255,255,.2); }
-  .mobile-action-bar__btn:disabled { opacity: .5; pointer-events: none; }
-  .mobile-action-bar__btn--danger {
-    border-color: #fca5a5;
-    color: #fca5a5;
-  }
-  /* Push panel content above the bar so nothing is hidden behind it */
-  .staff-body { padding-bottom: calc(52px + max(8px, env(safe-area-inset-bottom))); }
-  /* Hide these buttons from the header on mobile — the bar replaces them */
-  .header-shift-btn,
-  .header-logout-btn { display: none !important; }
+.header-menu__trigger {
+  font-size: 1.1rem;
+  letter-spacing: .05em;
+  padding: 4px 9px;
+}
+.header-menu__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 164px;
+  background: var(--surface);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.22);
+  z-index: 400;
+  overflow: hidden;
+  animation: fadeIn .14s ease;
+}
+.header-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 16px;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: .9rem;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s;
+}
+.header-menu__item:hover  { background: var(--bg); }
+.header-menu__item:active { background: var(--border); }
+.header-menu__item:disabled { opacity: .45; pointer-events: none; }
+.header-menu__item--danger { color: #dc2626; }
+.header-menu__divider {
+  height: 1px;
+  background: var(--border);
 }
 
 /* Panel header */
@@ -785,7 +785,7 @@ a { color: inherit; text-decoration: none; }
   position: fixed; inset: 0;
   background: rgba(0,0,0,.48);
   display: flex; align-items: flex-end; justify-content: center;
-  z-index: 300; /* above mobile-action-bar (200) */
+  z-index: 300;
   backdrop-filter: blur(3px);
   animation: fadeIn .18s ease;
   padding: 0; /* reset; individual modifiers add their own */

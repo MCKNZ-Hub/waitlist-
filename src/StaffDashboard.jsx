@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, lazy, Suspense } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useRestaurantState } from './useRestaurantState.js';
 import { useOptimistic } from './useOptimistic.js';
@@ -1031,6 +1031,8 @@ export default function StaffDashboard({ token, onLogout }) {
   const [showShiftClose,     setShowShiftClose]     = useState(false);
   const [shiftClosing,       setShiftClosing]       = useState(false);
   const [logoutPending,      setLogoutPending]      = useState(false);
+  const [menuOpen,           setMenuOpen]           = useState(false);
+  const menuRef = useRef(null);
 
   // ── Derived counts ──────────────────────────────────────────────────────────
 
@@ -1095,6 +1097,20 @@ export default function StaffDashboard({ token, onLogout }) {
     setToast({ msg, type, id: Date.now() });
     setTimeout(() => setToast(null), 3000);
   }, []);
+
+  // ── 3-dot menu: close when clicking outside ──────────────────────────────────
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('touchstart', onOutside);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('touchstart', onOutside);
+    };
+  }, [menuOpen]);
 
   // ── Table status change ──────────────────────────────────────────────────────
 
@@ -1446,29 +1462,45 @@ export default function StaffDashboard({ token, onLogout }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div className={`conn-dot ${connected ? 'conn-dot--on' : 'conn-dot--off'}`} title={connected ? 'Live' : 'Reconnecting…'} />
-          <button
-            className="btn-ghost btn-ghost--sm"
-            onClick={() => setShowQR(true)}
-            title="Guest QR code"
-          >
-            QR
-          </button>
-          <button
-            className="btn-ghost btn-ghost--sm header-shift-btn"
-            style={{ borderColor: '#fca5a5', color: '#fca5a5' }}
-            onClick={() => setShowShiftClose(true)}
-            title="Close shift"
-          >
-            🔒 Close
-          </button>
-          <button
-            className="btn-ghost btn-ghost--sm header-logout-btn"
-            onClick={handleLogout}
-            disabled={logoutPending}
-            title="Log out"
-          >
-            {logoutPending ? '…' : '⎋ Logout'}
-          </button>
+
+          {/* ── 3-dot menu ── */}
+          <div className="header-menu" ref={menuRef}>
+            <button
+              className="header-menu__trigger btn-ghost btn-ghost--sm"
+              onClick={() => setMenuOpen(o => !o)}
+              title="More options"
+              aria-haspopup="true"
+              aria-expanded={menuOpen}
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div className="header-menu__dropdown">
+                <button
+                  className="header-menu__item"
+                  onClick={() => { setMenuOpen(false); setShowQR(true); }}
+                >
+                  📷 Guest QR Code
+                </button>
+                <div className="header-menu__divider" />
+                <button
+                  className="header-menu__item header-menu__item--danger"
+                  onClick={() => { setMenuOpen(false); setShowShiftClose(true); }}
+                  disabled={shiftClosing}
+                >
+                  🔒 End Shift
+                </button>
+                <div className="header-menu__divider" />
+                <button
+                  className="header-menu__item"
+                  onClick={() => { setMenuOpen(false); handleLogout(); }}
+                  disabled={logoutPending}
+                >
+                  {logoutPending ? '…' : '⎋ Logout'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1730,24 +1762,6 @@ export default function StaffDashboard({ token, onLogout }) {
           )}
         </section>
 
-      </div>
-
-      {/* ── Mobile-only fixed bottom bar: End Shift + Logout ── */}
-      <div className="mobile-action-bar">
-        <button
-          className="mobile-action-bar__btn mobile-action-bar__btn--danger"
-          onClick={() => setShowShiftClose(true)}
-          disabled={shiftClosing}
-        >
-          🔒 End Shift
-        </button>
-        <button
-          className="mobile-action-bar__btn"
-          onClick={handleLogout}
-          disabled={logoutPending}
-        >
-          {logoutPending ? '…' : '⎋ Logout'}
-        </button>
       </div>
 
     </div>
