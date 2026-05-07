@@ -1461,7 +1461,7 @@ export default function StaffDashboard({ token, onLogout }) {
           <div className="hstat"><span className="hstat__num">{seatedToday}</span><span className="hstat__label">Seated</span></div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className={`conn-dot ${connected ? 'conn-dot--on' : 'conn-dot--off'}`} title={connected ? 'Live' : 'Reconnecting…'} />
+
 
           {/* ── 3-dot menu ── */}
           <div className="header-menu" ref={menuRef}>
