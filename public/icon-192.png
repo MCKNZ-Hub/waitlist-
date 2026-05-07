@@ -1,0 +1,7 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'>
+  <rect width='192' height='192' rx='40' fill='#1F450D'/>
+  <ellipse cx='96' cy='96' rx='80' ry='54' fill='none' stroke='#F9F2EA' stroke-width='3'/>
+  <text x='96' y='85' text-anchor='middle' fill='#F9F2EA' font-size='26' font-weight='700' font-family='Georgia,serif' letter-spacing='1'>CIBOLO</text>
+  <text x='96' y='108' text-anchor='middle' fill='#F9F2EA' font-size='17' font-weight='500' font-family='Arial,sans-serif' letter-spacing='5'>CREEK</text>
+  <text x='96' y='128' text-anchor='middle' fill='rgba(249,242,234,0.6)' font-size='11' font-family='Arial,sans-serif' letter-spacing='2'>BULVERDE TX</text>
+</svg>
