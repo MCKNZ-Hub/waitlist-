@@ -507,10 +507,10 @@ app.post('/api/shift/close', requireAuth, (req, res) => {
     }
   }
 
-  // Mark occupied tables as dirty
+  // Reset occupied and dirty tables to ready for the next shift
   for (const t of state.tables) {
-    if (t.status === 'occupied') {
-      t.status = 'dirty'; t.guestId = null; t.guestName = null;
+    if (t.status === 'occupied' || t.status === 'dirty') {
+      t.status = 'ready'; t.guestId = null; t.guestName = null;
       t.occupiedAt = null; t.waiterId = null;
       saveTable(t);
     }

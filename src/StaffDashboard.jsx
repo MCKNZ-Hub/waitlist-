@@ -688,7 +688,7 @@ function ShiftCloseModal({ onConfirm, onClose, loading }) {
         </p>
         <ul className="shift-close-list">
           <li>📋 Archive today's report</li>
-          <li>🪑 Mark occupied tables as dirty</li>
+          <li>✅ Reset all occupied &amp; dirty tables to ready</li>
           <li>🚪 Remove pending guests from waitlist</li>
           <li>👤 Mark all waiters off-shift</li>
         </ul>
@@ -1454,7 +1454,7 @@ export default function StaffDashboard({ token, onLogout }) {
             QR
           </button>
           <button
-            className="btn-ghost btn-ghost--sm"
+            className="btn-ghost btn-ghost--sm header-shift-btn"
             style={{ borderColor: '#fca5a5', color: '#fca5a5' }}
             onClick={() => setShowShiftClose(true)}
             title="Close shift"
@@ -1462,7 +1462,7 @@ export default function StaffDashboard({ token, onLogout }) {
             🔒 Close
           </button>
           <button
-            className="btn-ghost btn-ghost--sm"
+            className="btn-ghost btn-ghost--sm header-logout-btn"
             onClick={handleLogout}
             disabled={logoutPending}
             title="Log out"
@@ -1731,6 +1731,25 @@ export default function StaffDashboard({ token, onLogout }) {
         </section>
 
       </div>
+
+      {/* ── Mobile-only fixed bottom bar: End Shift + Logout ── */}
+      <div className="mobile-action-bar">
+        <button
+          className="mobile-action-bar__btn mobile-action-bar__btn--danger"
+          onClick={() => setShowShiftClose(true)}
+          disabled={shiftClosing}
+        >
+          🔒 End Shift
+        </button>
+        <button
+          className="mobile-action-bar__btn"
+          onClick={handleLogout}
+          disabled={logoutPending}
+        >
+          {logoutPending ? '…' : '⎋ Logout'}
+        </button>
+      </div>
+
     </div>
   );
 }

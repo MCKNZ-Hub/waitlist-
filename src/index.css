@@ -301,7 +301,16 @@ a { color: inherit; text-decoration: none; }
 .staff-link:hover { color: var(--brand); }
 
 /* ── Staff dashboard ───────────────────────────────────────────────────────── */
-.staff-page { min-height: 100dvh; display: flex; flex-direction: column; background: #ede8e1; }
+.staff-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #ede8e1;
+  /* Prevent the browser's edge-swipe back/forward from triggering on the app */
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+  overflow-x: hidden;
+}
 
 .staff-header {
   display: flex;
@@ -395,6 +404,7 @@ a { color: inherit; text-decoration: none; }
   flex: 1;
   display: flex;
   overflow: hidden;
+  overscroll-behavior-x: none;
 }
 
 .staff-panel {
@@ -448,6 +458,52 @@ a { color: inherit; text-decoration: none; }
     display: flex !important;
     flex: 1;
   }
+}
+
+/* ── Mobile action bar (End Shift + Logout) ───────────────────────────────── */
+.mobile-action-bar {
+  display: none; /* hidden on desktop */
+}
+
+@media (max-width: 767px) {
+  /* Show bar fixed at bottom of screen */
+  .mobile-action-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: var(--green);
+    border-top: 1px solid rgba(255,255,255,.18);
+    padding: 8px 16px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    gap: 10px;
+  }
+  .mobile-action-bar__btn {
+    flex: 1;
+    padding: 11px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.28);
+    background: rgba(255,255,255,.1);
+    color: #fff;
+    font-size: .875rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+  }
+  .mobile-action-bar__btn:active { background: rgba(255,255,255,.2); }
+  .mobile-action-bar__btn:disabled { opacity: .5; pointer-events: none; }
+  .mobile-action-bar__btn--danger {
+    border-color: #fca5a5;
+    color: #fca5a5;
+  }
+  /* Push panel content above the bar so nothing is hidden behind it */
+  .staff-body { padding-bottom: calc(52px + max(8px, env(safe-area-inset-bottom))); }
+  /* Hide these buttons from the header on mobile — the bar replaces them */
+  .header-shift-btn,
+  .header-logout-btn { display: none !important; }
 }
 
 /* Panel header */
