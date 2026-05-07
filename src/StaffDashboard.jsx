@@ -654,7 +654,7 @@ function TagEditorSheet({ guest, onSave, onClose }) {
 function QRModal({ onClose }) {
   const url = `${window.location.protocol}//${window.location.host}/`;
   return (
-    <div className="sheet-overlay" onClick={onClose}>
+    <div className="sheet-overlay sheet-overlay--center" onClick={onClose}>
       <div className="sheet qr-modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
         <p className="sheet-title">Guest Self Check-in</p>
         <p className="waiter-picker-sub">Guests scan this QR to join the waitlist from their phone</p>
@@ -680,7 +680,7 @@ function QRModal({ onClose }) {
 
 function ShiftCloseModal({ onConfirm, onClose, loading }) {
   return (
-    <div className="sheet-overlay" onClick={onClose}>
+    <div className="sheet-overlay sheet-overlay--center" onClick={onClose}>
       <div className="sheet" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
         <p className="sheet-title">Close Shift?</p>
         <p className="waiter-picker-sub" style={{ marginBottom: 16 }}>
