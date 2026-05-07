@@ -661,7 +661,7 @@ function QRModal({ onClose }) {
         <div className="qr-wrapper">
           <QRCodeSVG
             value={url}
-            size={220}
+            size={168}
             bgColor="#F9F2EA"
             fgColor="#1F450D"
             level="M"

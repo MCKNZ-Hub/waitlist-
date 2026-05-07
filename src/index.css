@@ -797,11 +797,27 @@ a { color: inherit; text-decoration: none; }
   padding: 16px;
 }
 .sheet-overlay--center .sheet {
-  border-radius: var(--radius);
-  max-height: calc(100dvh - 80px);
+  border-radius: 14px;
+  width: 100%;
+  /* svh = small viewport height, always the *visible* area even with browser chrome */
+  max-height: calc(100svh - 40px);
   overflow-y: auto;
-  /* no slide-up for centred dialogs — fade is enough */
   animation: fadeIn .18s ease;
+}
+
+@media (max-width: 767px) {
+  /* On mobile, anchor the sheet just above the fixed action bar instead of
+     centering over the full viewport (which puts half the content behind the bar) */
+  .sheet-overlay--center {
+    align-items: flex-end;
+    /* bottom padding = action bar height (~52px) + button padding + safe area */
+    padding: 16px 16px calc(60px + max(8px, env(safe-area-inset-bottom)));
+  }
+  .sheet-overlay--center .sheet {
+    /* Leave room for: top gap (16px) + bar offset (60px) + safe area */
+    max-height: calc(100svh - 96px);
+    border-radius: 14px; /* all four corners — it floats above the bar */
+  }
 }
 @keyframes fadeIn { from { opacity: 0; } }
 .sheet {
