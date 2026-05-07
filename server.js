@@ -570,7 +570,11 @@ app.use((err, req, res, next) => {
 const distDir = join(__dirname, 'dist');
 if (existsSync(distDir)) {
   app.use(express.static(distDir));
-  app.get('*', (req, res) => res.sendFile(join(distDir, 'index.html')));
+  // Serve the SPA shell for all non-API routes (client-side routing)
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/ws')) return next();
+    res.sendFile(join(distDir, 'index.html'));
+  });
 }
 
 // ── HTTP + WS ─────────────────────────────────────────────────────────────────
