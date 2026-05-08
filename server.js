@@ -507,6 +507,10 @@ app.post('/api/shift/close', requireAuth, (req, res) => {
     }
   }
 
+  // Clear all guests from in-memory state — report is already archived above.
+  // This resets the seated count and waitlist to zero for the next shift.
+  state.waitlist = [];
+
   // Reset occupied and dirty tables to ready for the next shift
   for (const t of state.tables) {
     if (t.status === 'occupied' || t.status === 'dirty') {
