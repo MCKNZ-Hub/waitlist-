@@ -65,11 +65,13 @@ function useMinuteTick() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function TableCard({ table, seatMode, combineMode, manageMode, isSelected, onPress, onSeatSelect, onCombineToggle, onSplit, onEdit, onDelete, now, waiterColor, waiterName, onReassignWaiter }) {
+function TableCard({ table, seatMode, combineMode, manageMode, isSelected, onPress, onSeatSelect, onCombineToggle, onSplit, onEdit, onDelete, now, waiterColor, waiterName, onReassignWaiter, suggestedPartySize = 0 }) {
   const meta       = STATUS[table.status] || STATUS.ready;
   const isCombined = Boolean(table.combinedWith?.length);
 
   const selectable = seatMode    && table.status === 'ready';
+  const isBestFit  = seatMode && table.status === 'ready' && suggestedPartySize > 0
+    && table.capacity >= suggestedPartySize && table.capacity <= suggestedPartySize + 2;
   const combinable = combineMode && table.status === 'ready' && !isCombined;
   const dim        = (seatMode    && table.status !== 'ready') ||
                      (combineMode && !combinable && !isSelected);
@@ -102,6 +104,7 @@ function TableCard({ table, seatMode, combineMode, manageMode, isSelected, onPre
         isCombined ? 'table-card--combined'   : '',
         manageMode ? 'table-card--manage'     : '',
         waiterColor && table.status === 'occupied' ? 'table-card--waiter' : '',
+        isBestFit  ? 'tc--best-fit'           : '',
       ].filter(Boolean).join(' ')}
       style={{
         '--sc': meta.color,
@@ -144,6 +147,7 @@ function TableCard({ table, seatMode, combineMode, manageMode, isSelected, onPre
         </div>
       )}
       {occupiedMs !== null && <div className="tc-timer">⏱ {formatTableTime(occupiedMs)}</div>}
+      {isBestFit && <span className="tc-best-fit-badge">✓ Best fit</span>}
       {selectable && <div className="tc-seat-hint">Tap to seat</div>}
       {isCombined && !combineMode && !seatMode && !manageMode && (
         <button className="tc-split-btn" onClick={e => { e.stopPropagation(); onSplit(table.id); }}>
@@ -808,10 +812,12 @@ function AddGuestModal({ onAdd, onClose }) {
 
 // ── Reports panel ─────────────────────────────────────────────────────────────
 
-function ReportsPanel({ api, waiters }) {
+function ReportsPanel({ api, waiters, role }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
+  const [history,     setHistory]     = useState(null);
+  const [histLoading, setHistLoading] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -827,6 +833,39 @@ function ReportsPanel({ api, waiters }) {
       })
       .finally(() => setLoading(false));
   }, [api]);
+
+  const loadHistory = useCallback(() => {
+    setHistLoading(true);
+    api.getShiftLogs()
+      .then(data => setHistory(data))
+      .catch(() => setHistory([]))
+      .finally(() => setHistLoading(false));
+  }, [api]);
+
+  function downloadCSV() {
+    if (!report) return;
+    const header = ['Guest', 'Party', 'Waited (min)', 'Waiter', 'Tags'];
+    const rows = report.seatedList.map(g => [
+      g.name, g.partySize, g.waitMinutes,
+      waiterMap[g.waiterId]?.name ?? '—',
+      (Array.isArray(g.tags) ? g.tags : []).join('; '),
+    ]);
+    if (report.removedList.length) {
+      rows.push([]);
+      rows.push(['Left / Removed', 'Party', 'Waited (min)', '', '']);
+      for (const g of report.removedList) rows.push([g.name, g.partySize, g.waitMinutes, '', '']);
+    }
+    const csv = [header, ...rows]
+      .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = Object.assign(document.createElement('a'), {
+      href: url,
+      download: `cibolo-creek-${new Date().toISOString().slice(0, 10)}.csv`,
+    });
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -982,17 +1021,51 @@ function ReportsPanel({ api, waiters }) {
         </div>
       )}
 
-      <button className="btn-ghost btn-ghost--sm" style={{ marginTop: 12 }} onClick={load}>
-        ↻ Refresh
-      </button>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+        <button className="btn-ghost btn-ghost--sm" onClick={load}>↻ Refresh</button>
+        <button className="btn-ghost btn-ghost--sm" onClick={downloadCSV}>⬇ Export CSV</button>
+        <button className="btn-ghost btn-ghost--sm" onClick={() => { if (!history) loadHistory(); setHistory(h => h === null ? 'loading' : null); }}>
+          {histLoading ? '…' : '🗂 Shift History'}
+        </button>
+      </div>
+
+      {history && history !== 'loading' && history.length === 0 && (
+        <p style={{ fontSize: '.8rem', color: 'var(--text-muted)', marginTop: 8 }}>No past shifts recorded.</p>
+      )}
+      {history && Array.isArray(history) && history.length > 0 && (
+        <div className="shift-history">
+          <h3 className="report-section__title">Past Shifts</h3>
+          {history.map(s => (
+            <details key={s.id} className="shift-history__item">
+              <summary className="shift-history__summary">
+                <span className="shift-history__date">{s.date}</span>
+                <span className="shift-history__meta">
+                  {s.summary.totalSeated} seated · {s.summary.totalGuests} covers · avg {s.summary.avgWaitMinutes}m wait
+                </span>
+              </summary>
+              <div className="shift-history__body">
+                {Array.isArray(s.summary.waiterStats) && s.summary.waiterStats.length > 0 && (
+                  <ul className="shift-history__waiter-list">
+                    {s.summary.waiterStats.map(ws => {
+                      const name = s.summary.waiters?.find(w => w.id === ws.waiterId)?.name ?? 'Unknown';
+                      return <li key={ws.waiterId}>{name}: {ws.tables} tables · {ws.covers} covers</li>;
+                    })}
+                  </ul>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
-export default function StaffDashboard({ token, onLogout }) {
+export default function StaffDashboard({ token, role = 'host', onLogout }) {
   const { restaurantState, connected, api } = useRestaurantState(token, onLogout);
+  const isManager = role === 'manager';
   const { tables, waitlist, patchTable, patchGuest, hideGuest, revertTable, revertGuest } =
     useOptimistic(restaurantState);
 
@@ -1453,7 +1526,7 @@ export default function StaffDashboard({ token, onLogout }) {
             <span className="logo-text" style={{ color: '#fff', fontSize: '1rem', display: 'block', lineHeight: 1.1 }}>Cibolo Creek</span>
             <span style={{ fontSize: '.45rem', fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(249,242,234,.6)', display: 'block', marginTop: 1 }}>Eatery &amp; Venue</span>
           </div>
-          <span className="staff-badge">Staff</span>
+          <span className="staff-badge">{isManager ? 'Manager' : 'Host'}</span>
         </div>
         <div className="staff-header__stats">
           <div className="hstat"><span className="hstat__num">{activeWaitlist.length}</span><span className="hstat__label">Waiting</span></div>
@@ -1483,14 +1556,16 @@ export default function StaffDashboard({ token, onLogout }) {
                   📷 Guest QR Code
                 </button>
                 <div className="header-menu__divider" />
-                <button
-                  className="header-menu__item header-menu__item--danger"
-                  onClick={() => { setMenuOpen(false); setShowShiftClose(true); }}
-                  disabled={shiftClosing}
-                >
-                  🔒 End Shift
-                </button>
-                <div className="header-menu__divider" />
+                {isManager && <>
+                  <button
+                    className="header-menu__item header-menu__item--danger"
+                    onClick={() => { setMenuOpen(false); setShowShiftClose(true); }}
+                    disabled={shiftClosing}
+                  >
+                    🔒 End Shift
+                  </button>
+                  <div className="header-menu__divider" />
+                </>}
                 <button
                   className="header-menu__item"
                   onClick={() => { setMenuOpen(false); handleLogout(); }}
@@ -1515,8 +1590,8 @@ export default function StaffDashboard({ token, onLogout }) {
         {[
           { key: 'waitlist', label: 'Waitlist', badge: activeWaitlist.length || null },
           { key: 'tables',   label: 'Tables',   badge: seatGuest ? '!' : combineMode ? '⛓' : null },
-          { key: 'waiters',  label: 'Waiters',  badge: activeWaiters.length || null },
-          { key: 'reports',  label: 'Reports',  badge: null },
+          ...(isManager ? [{ key: 'waiters', label: 'Waiters', badge: activeWaiters.length || null }] : []),
+          ...(isManager ? [{ key: 'reports', label: 'Reports', badge: null }] : []),
         ].map(({ key, label, badge }) => (
           <button
             key={key}
@@ -1625,12 +1700,14 @@ export default function StaffDashboard({ token, onLogout }) {
                   {combineMode ? '✕ Cancel' : '⛓ Combine'}
                 </button>
               )}
+              {isManager && (
               <button
                 className={`btn-ghost btn-ghost--sm ${manageMode ? 'btn-ghost--active' : ''}`}
                 onClick={handleToggleManageMode}
               >
                 {manageMode ? '✕ Done' : '⚙ Manage'}
               </button>
+              )}
               {!combineMode && !manageMode && (
                 <div className="legend">
                   {Object.entries(STATUS).map(([k, v]) => (
@@ -1696,6 +1773,7 @@ export default function StaffDashboard({ token, onLogout }) {
                       waiterColor={tbl.waiterId ? waiterMap[tbl.waiterId]?.color : null}
                       waiterName={tbl.waiterId ? waiterMap[tbl.waiterId]?.name : null}
                       onReassignWaiter={!seatGuest && !combineMode ? setReassignTable : null}
+                      suggestedPartySize={seatGuest ? seatGuest.partySize : 0}
                     />
                   ))}
                 </div>
@@ -1758,6 +1836,7 @@ export default function StaffDashboard({ token, onLogout }) {
             <ReportsPanel
               api={api}
               waiters={restaurantState.waiters || []}
+              role={role}
             />
           )}
         </section>

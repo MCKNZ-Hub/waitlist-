@@ -4,15 +4,17 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { randomBytes } from 'crypto';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync, appendFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import {
   loadState, saveTable, saveGuest, markGuestRemoved, saveSettings,
   createTableRow, updateTableConfig, deleteTableRow, getReportsToday,
   saveWaiter, deleteWaiterRow,
   getGuestHistoryByPhone, upsertGuestHistory, updateGuestHistoryNotes,
   closeShift, getShiftLogs,
+  createDbSession, getDbSession, deleteDbSession, pruneExpiredSessions, backupDb,
 } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -23,11 +25,23 @@ const {
   TEXTBELT_API_KEY,
   RESTAURANT_NAME = 'Cibolo Creek Eatery & Venue',
   STAFF_PIN       = '1234',
+  MANAGER_PIN,
   ALLOWED_ORIGIN,
   NODE_ENV        = 'development',
 } = process.env;
 
 const isProd = NODE_ENV === 'production';
+
+// ── Error logging ──────────────────────────────────────────────────────────
+
+function logError(type, err) {
+  const line = `[${new Date().toISOString()}] ${type}: ${err?.stack || err}\n`;
+  console.error(line.trimEnd());
+  try { appendFileSync(join(__dirname, 'error.log'), line); } catch {}
+}
+
+process.on('uncaughtException',  err    => logError('uncaughtException', err));
+process.on('unhandledRejection', reason => logError('unhandledRejection', reason));
 
 // ── SMS helpers ────────────────────────────────────────────────────────────────
 
@@ -89,31 +103,53 @@ async function sendReminderSmsBackground(guest) {
   }
 }
 
-// ── Session auth ───────────────────────────────────────────────────────────────
+// ── Session auth (persisted in SQLite) ────────────────────────────────────
 
-const sessions = new Map();             // token → { expiresAt }
-const SESSION_TTL = 12 * 60 * 60_000;  // 12 hours
+const SESSION_TTL = 12 * 60 * 60_000; // 12 hours
 
-function createSession() {
+// Prune expired sessions from DB on startup
+pruneExpiredSessions();
+
+function createSession(role = 'host') {
   const token = randomBytes(32).toString('hex');
-  sessions.set(token, { expiresAt: Date.now() + SESSION_TTL });
+  createDbSession(token, role, Date.now() + SESSION_TTL);
   return token;
 }
 
 function isValidSession(token) {
   if (!token) return false;
-  const s = sessions.get(token);
+  const s = getDbSession(token);
   if (!s) return false;
-  if (Date.now() > s.expiresAt) { sessions.delete(token); return false; }
+  if (Date.now() > s.expires_at) { deleteDbSession(token); return false; }
   return true;
 }
 
+function getSessionRole(token) {
+  return getDbSession(token)?.role ?? 'host';
+}
+
 function requireAuth(req, res, next) {
-  const auth  = req.headers['authorization'] ?? '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  const token = (req.headers['authorization'] ?? '').replace('Bearer ', '').trim() || null;
   if (!isValidSession(token)) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
+
+function requireManager(req, res, next) {
+  const token = (req.headers['authorization'] ?? '').replace('Bearer ', '').trim() || null;
+  if (!isValidSession(token)) return res.status(401).json({ error: 'Unauthorized' });
+  if (getSessionRole(token) !== 'manager') return res.status(403).json({ error: 'Manager access required' });
+  next();
+}
+
+// ── Rate limiter ───────────────────────────────────────────────────────────────
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many attempts. Try again in 15 minutes.' },
+});
 
 // ── Waiter color palette ───────────────────────────────────────────────────────
 
@@ -126,6 +162,13 @@ const WAITER_COLORS = [
 
 const app = express();
 app.use(express.json());
+
+// Force HTTPS in production (Railway sets x-forwarded-proto)
+app.use((req, res, next) => {
+  if (isProd && req.headers['x-forwarded-proto'] === 'http')
+    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+  next();
+});
 
 app.use((req, res, next) => {
   const origin = isProd && ALLOWED_ORIGIN ? ALLOWED_ORIGIN : '*';
@@ -164,18 +207,21 @@ wss.on('connection', ws => {
 
 // ── Public routes ─────────────────────────────────────────────────────────────
 
-app.get('/api/state', (req, res) => res.json(state));
+app.get('/api/state', requireAuth, (req, res) => res.json(state));
 
-app.post('/api/staff/auth', (req, res) => {
+app.post('/api/staff/auth', authLimiter, (req, res) => {
   const { pin } = req.body;
-  if (pin !== STAFF_PIN) return res.status(401).json({ ok: false, error: 'Incorrect PIN' });
-  const token = createSession();
-  res.json({ ok: true, token });
+  let role = null;
+  if (MANAGER_PIN && pin === MANAGER_PIN) role = 'manager';
+  else if (pin === STAFF_PIN)             role = 'host';
+  if (!role) return res.status(401).json({ ok: false, error: 'Incorrect PIN' });
+  const token = createSession(role);
+  res.json({ ok: true, token, role });
 });
 
 app.post('/api/staff/logout', requireAuth, (req, res) => {
-  const token = (req.headers['authorization'] ?? '').slice(7);
-  sessions.delete(token);
+  const token = (req.headers['authorization'] ?? '').replace('Bearer ', '').trim();
+  deleteDbSession(token);
   res.json({ ok: true });
 });
 
@@ -343,7 +389,7 @@ app.post('/api/tables/:id/split', requireAuth, (req, res) => {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-app.patch('/api/settings', requireAuth, (req, res) => {
+app.patch('/api/settings', requireManager, (req, res) => {
   const { estimatedWait } = req.body;
   if (estimatedWait !== undefined) {
     const val = parseInt(estimatedWait, 10);
@@ -356,7 +402,7 @@ app.patch('/api/settings', requireAuth, (req, res) => {
 
 // ── Table management ──────────────────────────────────────────────────────────
 
-app.post('/api/tables', requireAuth, (req, res) => {
+app.post('/api/tables', requireManager, (req, res) => {
   const { number, capacity, section } = req.body;
   const n = parseInt(number, 10);
   const c = parseInt(capacity, 10);
@@ -378,7 +424,7 @@ app.post('/api/tables', requireAuth, (req, res) => {
   res.json(table);
 });
 
-app.patch('/api/tables/:id/config', requireAuth, (req, res) => {
+app.patch('/api/tables/:id/config', requireManager, (req, res) => {
   const table = state.tables.find(t => t.id === req.params.id);
   if (!table) return res.status(404).json({ error: 'Table not found' });
   if (table.status === 'occupied' || table.combinedWith || table.primaryTableId)
@@ -400,7 +446,7 @@ app.patch('/api/tables/:id/config', requireAuth, (req, res) => {
   res.json(table);
 });
 
-app.delete('/api/tables/:id', requireAuth, (req, res) => {
+app.delete('/api/tables/:id', requireManager, (req, res) => {
   const idx = state.tables.findIndex(t => t.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Table not found' });
   const table = state.tables[idx];
@@ -423,7 +469,7 @@ app.delete('/api/tables/:id', requireAuth, (req, res) => {
 
 app.get('/api/waiters', (req, res) => res.json(state.waiters));
 
-app.post('/api/waiters', requireAuth, (req, res) => {
+app.post('/api/waiters', requireManager, (req, res) => {
   const { name, color } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
 
@@ -440,7 +486,7 @@ app.post('/api/waiters', requireAuth, (req, res) => {
   res.json(waiter);
 });
 
-app.patch('/api/waiters/:id', requireAuth, (req, res) => {
+app.patch('/api/waiters/:id', requireManager, (req, res) => {
   const waiter = state.waiters.find(w => w.id === req.params.id);
   if (!waiter) return res.status(404).json({ error: 'Waiter not found' });
 
@@ -453,7 +499,7 @@ app.patch('/api/waiters/:id', requireAuth, (req, res) => {
   res.json(waiter);
 });
 
-app.delete('/api/waiters/:id', requireAuth, (req, res) => {
+app.delete('/api/waiters/:id', requireManager, (req, res) => {
   const idx = state.waiters.findIndex(w => w.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Waiter not found' });
 
@@ -494,7 +540,7 @@ app.patch('/api/history/:phone/notes', requireAuth, (req, res) => {
 
 // ── Shift close ───────────────────────────────────────────────────────────────
 
-app.post('/api/shift/close', requireAuth, (req, res) => {
+app.post('/api/shift/close', requireManager, (req, res) => {
   // Snapshot current report
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const report     = getReportsToday(todayStart.getTime());
@@ -540,9 +586,58 @@ app.get('/api/shift/logs', requireAuth, (req, res) => {
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 
-app.get('/api/reports/today', requireAuth, (req, res) => {
+app.get('/api/reports/today', requireManager, (req, res) => {
   res.json(getReportsToday());
 });
+
+app.get('/api/reports/today/csv', requireManager, (req, res) => {
+  const report = getReportsToday();
+  const waiterMap = {};
+  for (const w of state.waiters) waiterMap[w.id] = w;
+  const header = ['Guest', 'Party', 'Waited (min)', 'Waiter', 'Tags', 'Seated At'];
+  const rows = report.seatedList.map(g => [
+    g.name,
+    g.partySize,
+    g.waitMinutes,
+    waiterMap[g.waiterId]?.name ?? '—',
+    (Array.isArray(g.tags) ? g.tags : []).join('; '),
+    g.seatedAt ? new Date(g.seatedAt).toLocaleTimeString('en-US') : '—',
+  ]);
+  if (report.removedList.length) {
+    rows.push([]);
+    rows.push(['Left / Removed', 'Party', 'Waited (min)', '', '', '']);
+    for (const g of report.removedList)
+      rows.push([g.name, g.partySize, g.waitMinutes, '', '', '']);
+  }
+  const csv = [header, ...rows]
+    .map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="cibolo-creek-${date}.csv"`);
+  res.send(csv);
+});
+
+// ── DB backup (hourly, keeps last 48) ────────────────────────────────────
+
+async function runBackup() {
+  try {
+    const dir = join(__dirname, 'backups');
+    mkdirSync(dir, { recursive: true });
+    const ts   = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
+    const dest = join(dir, `tableflow-${ts}.db`);
+    await backupDb(dest);
+    // Prune: keep last 48 files
+    const files = readdirSync(dir).filter(f => f.endsWith('.db')).sort();
+    for (const f of files.slice(0, -48)) unlinkSync(join(dir, f));
+    console.log(`✓ Backup → ${dest}`);
+  } catch (err) {
+    logError('backup', err);
+  }
+}
+
+runBackup(); // backup on startup
+setInterval(runBackup, 60 * 60_000); // then hourly
 
 // ── Auto-reminder: SMS guests still waiting 10 min after notification ─────────
 

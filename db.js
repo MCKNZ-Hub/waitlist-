@@ -69,6 +69,12 @@ db.exec(`
     date       TEXT    NOT NULL,
     summary    TEXT    NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    role       TEXT    NOT NULL DEFAULT 'host',
+    expires_at INTEGER NOT NULL
+  );
 `);
 
 // Migrations — no-op if column already exists
@@ -316,6 +322,31 @@ export function getShiftLogs(limit = 30) {
   return db.prepare('SELECT * FROM shift_logs ORDER BY closed_at DESC LIMIT ?')
     .all(limit)
     .map(r => ({ ...r, summary: JSON.parse(r.summary) }));
+}
+
+// ── Sessions (persistent across restarts) ─────────────────────────────────
+
+export function createDbSession(token, role, expiresAt) {
+  db.prepare('INSERT OR REPLACE INTO sessions (token, role, expires_at) VALUES (?, ?, ?)')
+    .run(token, role, expiresAt);
+}
+
+export function getDbSession(token) {
+  return db.prepare('SELECT * FROM sessions WHERE token = ?').get(token) ?? null;
+}
+
+export function deleteDbSession(token) {
+  db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
+
+export function pruneExpiredSessions() {
+  db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
+}
+
+// ── Database backup ───────────────────────────────────────────────────────
+
+export async function backupDb(destPath) {
+  await db.backup(destPath);
 }
 
 // ── Reports ────────────────────────────────────────────────────────────────

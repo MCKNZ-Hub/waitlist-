@@ -79,7 +79,9 @@
       "Bash(curl -s -X POST http://localhost:3001/api/staff/auth -H 'Content-Type: application/json' -d not-valid-json -w '\\\\nHTTP Status: %{http_code}\\\\n')",
       "Bash(kill -0 77751)",
       "Bash(curl -s -X POST http://localhost:3001/api/staff/auth -H \"Content-Type: application/json\" -d '{\"pin\":\"0000\"}')",
-      "Bash(curl -s -X POST http://localhost:3001/api/staff/auth -H \"Content-Type: application/json\" -d 'garbage')"
+      "Bash(curl -s -X POST http://localhost:3001/api/staff/auth -H \"Content-Type: application/json\" -d 'garbage')",
+      "Bash(node --check server.js)",
+      "Bash(node --input-type=module --eval ' *)"
     ]
   }
 }
