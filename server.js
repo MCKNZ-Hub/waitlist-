@@ -18,6 +18,7 @@ import {
 } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = process.env.DATA_DIR || __dirname;
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,7 @@ const isProd = NODE_ENV === 'production';
 function logError(type, err) {
   const line = `[${new Date().toISOString()}] ${type}: ${err?.stack || err}\n`;
   console.error(line.trimEnd());
-  try { appendFileSync(join(__dirname, 'error.log'), line); } catch {}
+  try { appendFileSync(join(DATA_DIR, 'error.log'), line); } catch {}
 }
 
 process.on('uncaughtException',  err    => logError('uncaughtException', err));
@@ -607,7 +608,7 @@ app.get('/api/reports/today/csv', requireAuth, (req, res) => {
 
 async function runBackup() {
   try {
-    const dir = join(__dirname, 'backups');
+    const dir = join(DATA_DIR, 'backups');
     mkdirSync(dir, { recursive: true });
     const ts   = new Date().toISOString().slice(0, 16).replace(/:/g, '-');
     const dest = join(dir, `tableflow-${ts}.db`);
