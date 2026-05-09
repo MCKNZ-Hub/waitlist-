@@ -25,7 +25,6 @@ const {
   TEXTBELT_API_KEY,
   RESTAURANT_NAME = 'Cibolo Creek Eatery & Venue',
   STAFF_PIN       = '1234',
-  MANAGER_PIN,
   ALLOWED_ORIGIN,
   NODE_ENV        = 'development',
 } = process.env;
@@ -110,9 +109,9 @@ const SESSION_TTL = 12 * 60 * 60_000; // 12 hours
 // Prune expired sessions from DB on startup
 pruneExpiredSessions();
 
-function createSession(role = 'host') {
+function createSession() {
   const token = randomBytes(32).toString('hex');
-  createDbSession(token, role, Date.now() + SESSION_TTL);
+  createDbSession(token, 'staff', Date.now() + SESSION_TTL);
   return token;
 }
 
@@ -124,20 +123,9 @@ function isValidSession(token) {
   return true;
 }
 
-function getSessionRole(token) {
-  return getDbSession(token)?.role ?? 'host';
-}
-
 function requireAuth(req, res, next) {
   const token = (req.headers['authorization'] ?? '').replace('Bearer ', '').trim() || null;
   if (!isValidSession(token)) return res.status(401).json({ error: 'Unauthorized' });
-  next();
-}
-
-function requireManager(req, res, next) {
-  const token = (req.headers['authorization'] ?? '').replace('Bearer ', '').trim() || null;
-  if (!isValidSession(token)) return res.status(401).json({ error: 'Unauthorized' });
-  if (getSessionRole(token) !== 'manager') return res.status(403).json({ error: 'Manager access required' });
   next();
 }
 
@@ -211,12 +199,9 @@ app.get('/api/state', requireAuth, (req, res) => res.json(state));
 
 app.post('/api/staff/auth', authLimiter, (req, res) => {
   const { pin } = req.body;
-  let role = null;
-  if (MANAGER_PIN && pin === MANAGER_PIN) role = 'manager';
-  else if (pin === STAFF_PIN)             role = 'host';
-  if (!role) return res.status(401).json({ ok: false, error: 'Incorrect PIN' });
-  const token = createSession(role);
-  res.json({ ok: true, token, role });
+  if (pin !== STAFF_PIN) return res.status(401).json({ ok: false, error: 'Incorrect PIN' });
+  const token = createSession();
+  res.json({ ok: true, token });
 });
 
 app.post('/api/staff/logout', requireAuth, (req, res) => {
@@ -389,7 +374,7 @@ app.post('/api/tables/:id/split', requireAuth, (req, res) => {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-app.patch('/api/settings', requireManager, (req, res) => {
+app.patch('/api/settings', requireAuth, (req, res) => {
   const { estimatedWait } = req.body;
   if (estimatedWait !== undefined) {
     const val = parseInt(estimatedWait, 10);
@@ -402,7 +387,7 @@ app.patch('/api/settings', requireManager, (req, res) => {
 
 // ── Table management ──────────────────────────────────────────────────────────
 
-app.post('/api/tables', requireManager, (req, res) => {
+app.post('/api/tables', requireAuth, (req, res) => {
   const { number, capacity, section } = req.body;
   const n = parseInt(number, 10);
   const c = parseInt(capacity, 10);
@@ -424,7 +409,7 @@ app.post('/api/tables', requireManager, (req, res) => {
   res.json(table);
 });
 
-app.patch('/api/tables/:id/config', requireManager, (req, res) => {
+app.patch('/api/tables/:id/config', requireAuth, (req, res) => {
   const table = state.tables.find(t => t.id === req.params.id);
   if (!table) return res.status(404).json({ error: 'Table not found' });
   if (table.status === 'occupied' || table.combinedWith || table.primaryTableId)
@@ -446,7 +431,7 @@ app.patch('/api/tables/:id/config', requireManager, (req, res) => {
   res.json(table);
 });
 
-app.delete('/api/tables/:id', requireManager, (req, res) => {
+app.delete('/api/tables/:id', requireAuth, (req, res) => {
   const idx = state.tables.findIndex(t => t.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Table not found' });
   const table = state.tables[idx];
@@ -469,7 +454,7 @@ app.delete('/api/tables/:id', requireManager, (req, res) => {
 
 app.get('/api/waiters', (req, res) => res.json(state.waiters));
 
-app.post('/api/waiters', requireManager, (req, res) => {
+app.post('/api/waiters', requireAuth, (req, res) => {
   const { name, color } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'Name required' });
 
@@ -486,7 +471,7 @@ app.post('/api/waiters', requireManager, (req, res) => {
   res.json(waiter);
 });
 
-app.patch('/api/waiters/:id', requireManager, (req, res) => {
+app.patch('/api/waiters/:id', requireAuth, (req, res) => {
   const waiter = state.waiters.find(w => w.id === req.params.id);
   if (!waiter) return res.status(404).json({ error: 'Waiter not found' });
 
@@ -499,7 +484,7 @@ app.patch('/api/waiters/:id', requireManager, (req, res) => {
   res.json(waiter);
 });
 
-app.delete('/api/waiters/:id', requireManager, (req, res) => {
+app.delete('/api/waiters/:id', requireAuth, (req, res) => {
   const idx = state.waiters.findIndex(w => w.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Waiter not found' });
 
@@ -540,7 +525,7 @@ app.patch('/api/history/:phone/notes', requireAuth, (req, res) => {
 
 // ── Shift close ───────────────────────────────────────────────────────────────
 
-app.post('/api/shift/close', requireManager, (req, res) => {
+app.post('/api/shift/close', requireAuth, (req, res) => {
   // Snapshot current report
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const report     = getReportsToday(todayStart.getTime());
@@ -586,11 +571,11 @@ app.get('/api/shift/logs', requireAuth, (req, res) => {
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 
-app.get('/api/reports/today', requireManager, (req, res) => {
+app.get('/api/reports/today', requireAuth, (req, res) => {
   res.json(getReportsToday());
 });
 
-app.get('/api/reports/today/csv', requireManager, (req, res) => {
+app.get('/api/reports/today/csv', requireAuth, (req, res) => {
   const report = getReportsToday();
   const waiterMap = {};
   for (const w of state.waiters) waiterMap[w.id] = w;

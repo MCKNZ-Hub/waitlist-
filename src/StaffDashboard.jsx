@@ -812,7 +812,7 @@ function AddGuestModal({ onAdd, onClose }) {
 
 // ── Reports panel ─────────────────────────────────────────────────────────────
 
-function ReportsPanel({ api, waiters, role }) {
+function ReportsPanel({ api, waiters }) {
   const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
@@ -1063,9 +1063,8 @@ function ReportsPanel({ api, waiters, role }) {
 
 // ── Main dashboard ────────────────────────────────────────────────────────────
 
-export default function StaffDashboard({ token, role = 'host', onLogout }) {
+export default function StaffDashboard({ token, onLogout }) {
   const { restaurantState, connected, api } = useRestaurantState(token, onLogout);
-  const isManager = role === 'manager';
   const { tables, waitlist, patchTable, patchGuest, hideGuest, revertTable, revertGuest } =
     useOptimistic(restaurantState);
 
@@ -1526,7 +1525,7 @@ export default function StaffDashboard({ token, role = 'host', onLogout }) {
             <span className="logo-text" style={{ color: '#fff', fontSize: '1rem', display: 'block', lineHeight: 1.1 }}>Cibolo Creek</span>
             <span style={{ fontSize: '.45rem', fontWeight: 600, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(249,242,234,.6)', display: 'block', marginTop: 1 }}>Eatery &amp; Venue</span>
           </div>
-          <span className="staff-badge">{isManager ? 'Manager' : 'Host'}</span>
+          <span className="staff-badge">Staff</span>
         </div>
         <div className="staff-header__stats">
           <div className="hstat"><span className="hstat__num">{activeWaitlist.length}</span><span className="hstat__label">Waiting</span></div>
@@ -1556,16 +1555,14 @@ export default function StaffDashboard({ token, role = 'host', onLogout }) {
                   📷 Guest QR Code
                 </button>
                 <div className="header-menu__divider" />
-                {isManager && <>
-                  <button
-                    className="header-menu__item header-menu__item--danger"
-                    onClick={() => { setMenuOpen(false); setShowShiftClose(true); }}
-                    disabled={shiftClosing}
-                  >
-                    🔒 End Shift
-                  </button>
-                  <div className="header-menu__divider" />
-                </>}
+                <button
+                  className="header-menu__item header-menu__item--danger"
+                  onClick={() => { setMenuOpen(false); setShowShiftClose(true); }}
+                  disabled={shiftClosing}
+                >
+                  🔒 End Shift
+                </button>
+                <div className="header-menu__divider" />
                 <button
                   className="header-menu__item"
                   onClick={() => { setMenuOpen(false); handleLogout(); }}
@@ -1590,8 +1587,8 @@ export default function StaffDashboard({ token, role = 'host', onLogout }) {
         {[
           { key: 'waitlist', label: 'Waitlist', badge: activeWaitlist.length || null },
           { key: 'tables',   label: 'Tables',   badge: seatGuest ? '!' : combineMode ? '⛓' : null },
-          ...(isManager ? [{ key: 'waiters', label: 'Waiters', badge: activeWaiters.length || null }] : []),
-          ...(isManager ? [{ key: 'reports', label: 'Reports', badge: null }] : []),
+          { key: 'waiters',  label: 'Waiters',  badge: activeWaiters.length || null },
+          { key: 'reports',  label: 'Reports',  badge: null },
         ].map(({ key, label, badge }) => (
           <button
             key={key}
@@ -1700,14 +1697,12 @@ export default function StaffDashboard({ token, role = 'host', onLogout }) {
                   {combineMode ? '✕ Cancel' : '⛓ Combine'}
                 </button>
               )}
-              {isManager && (
               <button
                 className={`btn-ghost btn-ghost--sm ${manageMode ? 'btn-ghost--active' : ''}`}
                 onClick={handleToggleManageMode}
               >
                 {manageMode ? '✕ Done' : '⚙ Manage'}
               </button>
-              )}
               {!combineMode && !manageMode && (
                 <div className="legend">
                   {Object.entries(STATUS).map(([k, v]) => (
@@ -1836,7 +1831,6 @@ export default function StaffDashboard({ token, role = 'host', onLogout }) {
             <ReportsPanel
               api={api}
               waiters={restaurantState.waiters || []}
-              role={role}
             />
           )}
         </section>

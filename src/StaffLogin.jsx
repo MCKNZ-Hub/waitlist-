@@ -39,7 +39,7 @@ export default function StaffLogin({ onSuccess }) {
       const data = await res.json();
       if (data.ok) {
         sessionStorage.setItem('staffToken', data.token);
-        onSuccess(data.token, data.role || 'host');
+        onSuccess(data.token);
       } else {
         setError('Incorrect PIN — try again');
         setPin('');
